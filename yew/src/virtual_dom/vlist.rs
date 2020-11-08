@@ -1,5 +1,5 @@
 //! This module contains fragments implementation.
-use super::{Key, VDiff, VNode, VText};
+use super::{Key, VDiff, VNode, VTag};
 use crate::html::{AnyScope, NodeRef};
 use cfg_if::cfg_if;
 use std::collections::HashMap;
@@ -302,8 +302,10 @@ impl VDiff for VList {
         if self.children.is_empty() {
             // Without a placeholder the next element becomes first
             // and corrupts the order of rendering
-            // We use empty text element to stake out a place
-            self.add_child(VText::new("").into());
+            // We use empty span element to stake out a place
+            let mut placeholder = VTag::new("span");
+            placeholder.key = Some("__placeholder".into());
+            self.children = vec![placeholder.into()];
         }
 
         let lefts = &mut self.children;
