@@ -33,6 +33,7 @@ pub enum VNode {
 }
 
 impl VNode {
+    /// Returns a copy of the Key associated with the VNode
     pub fn key(&self) -> Option<Key> {
         match self {
             VNode::VComp(vcomp) => vcomp.key.clone(),
@@ -43,14 +44,19 @@ impl VNode {
         }
     }
 
-    /// Returns, if the VNode has a key without needlessly cloning the key
-    pub fn has_key(&self) -> bool {
+    /// Returns a reference of the Key associated with the VNode
+    pub(crate) fn key_ref(&self) -> &Option<Key> {
         match self {
-            VNode::VComp(vcomp) => vcomp.key.is_some(),
-            VNode::VList(vlist) => vlist.key.is_some(),
-            VNode::VRef(_) | VNode::VText(_) => false,
-            VNode::VTag(vtag) => vtag.key.is_some(),
+            VNode::VComp(vcomp) => &vcomp.key,
+            VNode::VList(vlist) => &vlist.key,
+            VNode::VTag(vtag) => &vtag.key,
+            VNode::VRef(_) | VNode::VText(_) => &None,
         }
+    }
+
+    /// Returns, if the VNode has a key without needlessly cloning the key
+    pub(crate) fn has_key(&self) -> bool {
+        self.key_ref().is_some()
     }
 
     /// Returns the first DOM node that is used to designate the position of the virtual DOM node.

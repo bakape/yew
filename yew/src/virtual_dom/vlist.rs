@@ -1,5 +1,5 @@
 //! This module contains fragments implementation.
-use super::{Key, VDiff, VNode, VTag};
+use super::{Key, VDiff, VNode, VText};
 use crate::html::{AnyScope, NodeRef};
 use cfg_if::cfg_if;
 use std::collections::HashMap;
@@ -160,53 +160,18 @@ impl VList {
         next_sibling
     }
 
-    /// Diff and patch fully keyed child lists.
-    ///
-    /// Optimized for node addition or removal from either end of the list and small changes in the
-    /// middle.
+    /// Diff and patch fully keyed child lists
     fn apply_keyed(
         parent_scope: &AnyScope,
         parent: &Element,
         mut next_sibling: NodeRef,
         lefts: &mut [VNode],
-        mut rights: Vec<VNode>,
+        rights: Vec<VNode>,
     ) -> NodeRef {
-        macro_rules! map_keys {
-            ($src:expr) => {
-                $src.iter()
-                    .map(|v| v.key().expect("unkeyed child in fully keyed list"))
-                    .collect::<Vec<Key>>()
-            };
-        }
-        let lefts_keys = map_keys!(lefts);
-        let rights_keys = map_keys!(rights);
-
-        /// Find the first differing key in 2 iterators
-        fn diff_i<'a, 'b>(
-            a: impl Iterator<Item = &'a Key>,
-            b: impl Iterator<Item = &'b Key>,
-        ) -> usize {
-            a.zip(b).take_while(|(a, b)| a == b).count()
-        }
-
-        // Find first key mismatch from the front
-        let from_start = diff_i(lefts_keys.iter(), rights_keys.iter());
-
-        if from_start == std::cmp::min(lefts.len(), rights.len()) {
-            // No key changes
-            return Self::apply_unkeyed(parent_scope, parent, next_sibling, lefts, rights);
-        }
-
-        // Find first key mismatch from the back
-        let from_end = diff_i(
-            lefts_keys[from_start..].iter().rev(),
-            rights_keys[from_start..].iter().rev(),
-        );
-
         macro_rules! apply {
             ($l:expr, $r:expr) => {
                 test_log!("patching: {:?} -> {:?}", $r, $l);
-                apply!(std::mem::take($r).into() => $l);
+                apply!($r.into() => $l);
             };
             ($l:expr) => {
                 test_log!("adding: {:?}", $l);
@@ -221,29 +186,33 @@ impl VList {
             };
         }
 
-        // Diff matching children at the end
-        let lefts_to = lefts_keys.len() - from_end;
-        let rights_to = rights_keys.len() - from_end;
-        for (l, r) in lefts[lefts_to..]
-            .iter_mut()
-            .rev()
-            .zip(rights[rights_to..].iter_mut().rev())
-        {
-            apply!(l, r);
+        // Perform backwards iteration, until a key mismatch or depleted iterator
+        let mut l_it = lefts.iter_mut().rev().peekable();
+        let mut r_it = rights.into_iter().rev().peekable();
+        loop {
+            let l_next = l_it.peek();
+            let r_next = r_it.peek();
+
+            match (l_next, r_next) {
+                (Some(l_next), Some(r_next)) if l_next.key_ref() == r_next.key_ref() => {
+                    apply!(l_it.next().unwrap(), r_it.next().unwrap());
+                }
+                _ => break,
+            }
         }
 
-        // Diff mismatched children in the middle
-        let mut rights_diff: HashMap<Key, &mut VNode> = rights_keys[from_start..rights_to]
-            .iter()
-            .zip(rights[from_start..rights_to].iter_mut())
-            .map(|(k, v)| (k.clone(), v))
+        // Collect the rest of rights into a map for quick lookup
+        let mut r_diff: HashMap<Key, VNode> = r_it
+            .map(|n| (n.key().expect("unkeyed child in fully keyed VList"), n))
             .collect();
-        for (l_k, l) in lefts_keys[from_start..lefts_to]
-            .iter()
-            .rev()
-            .zip(lefts[from_start..lefts_to].iter_mut().rev())
-        {
-            match rights_diff.remove(l_k) {
+
+        // Continue iteration of lefts
+        for l in l_it {
+            match r_diff.remove(
+                l.key_ref()
+                    .as_ref()
+                    .expect("unkeyed child in fully keyed VList"),
+            ) {
                 // Reorder and diff any existing children
                 Some(r) => {
                     test_log!("moving as next: {:?}", r);
@@ -258,18 +227,9 @@ impl VList {
         }
 
         // Remove any extra rights
-        for (_, r) in rights_diff.drain() {
+        for (_, mut r) in r_diff.drain() {
             test_log!("removing: {:?}", r);
             r.detach(parent);
-        }
-
-        // Diff matching children at the start
-        for (l, r) in lefts[..from_start]
-            .iter_mut()
-            .rev()
-            .zip(rights[..from_start].iter_mut().rev())
-        {
-            apply!(l, r);
         }
 
         next_sibling
@@ -302,10 +262,8 @@ impl VDiff for VList {
         if self.children.is_empty() {
             // Without a placeholder the next element becomes first
             // and corrupts the order of rendering
-            // We use empty span element to stake out a place
-            let mut placeholder = VTag::new("span");
-            placeholder.key = Some("__placeholder".into());
-            self.children = vec![placeholder.into()];
+            // We use empty text element to stake out a place
+            self.add_child(VText::new("").into());
         }
 
         let lefts = &mut self.children;
