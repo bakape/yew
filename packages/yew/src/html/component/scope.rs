@@ -259,25 +259,6 @@ impl<COMP: Component> Scope<COMP> {
         closure.into()
     }
 
-    /// Creates a `Callback` from an `FnOnce` which will send a message
-    /// to the linked component's update method when invoked.
-    ///
-    /// Please be aware that currently the result of this callback
-    /// will synchronously schedule calls to the
-    /// [Component](Component) interface.
-    pub fn callback_once<F, IN, M>(&self, function: F) -> Callback<IN>
-    where
-        M: Into<COMP::Message>,
-        F: FnOnce(IN) -> M + 'static,
-    {
-        let scope = self.clone();
-        let closure = move |input| {
-            let output = function(input);
-            scope.send_message(output);
-        };
-        Callback::once(closure)
-    }
-
     /// Creates a `Callback` which will send a batch of messages back
     /// to the linked component's update method when invoked.
     ///

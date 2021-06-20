@@ -58,6 +58,18 @@ macro_rules! impl_action {
                         EventListener::new_with_options(&EventTarget::from(element.clone()), $name, options, listener)
                     }
                 }
+
+                fn as_any(&self) -> &dyn std::any::Any {
+                    self
+                }
+
+                fn eq(&self, other: &dyn Listener) -> bool {
+                    other
+                        .as_any()
+                        .downcast_ref::<Self>()
+                        .map(|other| self.callback == other.callback)
+                        .unwrap_or(false)
+                }
             }
         }
     )*};

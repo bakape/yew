@@ -37,8 +37,16 @@ pub use self::vtext::VText;
 pub trait Listener {
     /// Returns the name of the event
     fn kind(&self) -> &'static str;
+
     /// Attaches a listener to the element.
     fn attach(&self, element: &Element) -> EventListener;
+
+    /// Reference self as `Any` trait object
+    fn as_any(&self) -> &dyn std::any::Any;
+
+    /// Compares the listener to another for equality.
+    /// Listeners are equal, if their types and captured variables are equal.
+    fn eq(&self, other: &dyn Listener) -> bool;
 }
 
 impl fmt::Debug for dyn Listener {
